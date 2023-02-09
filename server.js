@@ -1,5 +1,6 @@
 const express = require('express');
 const mysql = require('mysql2');
+const inquirer = require('inquirer');
 require('dotenv').config();
 
 const PORT = process.env.PORT ;
@@ -21,3 +22,9 @@ const db = mysql.createConnection(
   },
   console.log(`Connected to the books_db database.`)
 );
+
+//inquirer options:
+//view all for each table
+//add for each table
+//update for employee
+//quit
