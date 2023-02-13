@@ -24,42 +24,64 @@ const db = mysql.createConnection(
   console.log(`Connected to the company database.`)
 );
 
-app.use((req, res) => {
-  res.status(404).end();
-});
+//all of the db methods following will reference the ask questions so that the query completes than asks more questions
+//previous versions had the problem where the database call and the inquirer prompts disrupted each other
 
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-})
+
+//START OF VIEWS
 
 //todo update views
 viewDepartments = async () => {
-  db.query('SELET * FROM department', function (err, results) {
-    console.log(results);
+  db.query(`SELECT * FROM department`, function (err, results) {
+    if(err){
+      console.log(err);
+    }
+    console.table(results);
+    
+    askQuestions();
   });
 }
 
-viewRoles = async () => {
-  db.query('SELET * FROM role', function (err, results) {
-    console.log(results);
+viewRoles = () => {
+  db.query("SELECT * FROM role", function (err, results) {
+    if(err){
+      console.log(err);
+    }
+    console.table(results);
+    
+    askQuestions();
   });
 }
 
-viewEmployees = async () => {
-  db.query('SELET * FROM employee', function (err, results) {
-    console.log(results);
+viewEmployees = () => {
+  db.query("SELECT * FROM employee", function (err, results) {
+    if(err){
+      console.log(err);
+    }
+    console.table(results);
+    
+    askQuestions();
   });
 }
 
-//todo update adds
+//END OF VIEWS
+
+//START OF ADD METHODS
+
+//For all the adds they need a inquirer prompt within the method cause of how it works, I can't figure out a better way right now
+//
 //example departmentobject = {
 //  name: 'exapmle'
 //}
-addDepartment = async (departmentObject) => {
+addDepartment = (departmentObject) => {
   db.query(`INSERT INTO department (name) VALUES (${departmentObject.name})`, function (err, results){
     if(err){
       throw err;
     }
+
+    console.log(`Added ${departmentObject.name} to the database`);
+
+    askQuestions();
   });
 }
 
@@ -68,11 +90,39 @@ addDepartment = async (departmentObject) => {
 //  salary: '1234',
 //  department: 'upper'
 //}
-addRole = async (roleObject) => {
-  db.query(`INSERT INTO role (name, salary, department) VALUES (${roleObject.name}, ${roleObject.salary}, ${roleObject.department})`, function (err, results){
-    if(err){
-      throw err;
+addRole = (roleObject) => {
+  //nested query so I can get the name and id
+  db.query(`SELECT id, name FROM department`, function(err, results){
+    let choices = [];
+    let ids = [];
+    for(let result of results){
+      choices.push(result.name);
+      ids.push(result.id);
     }
+
+    inquirer.prompt([
+      {
+        type: 'list',
+        message: 'Which department does this role belong to?',
+        name: 'department',
+        choices: choices
+      }
+    ]).then((response) => {
+      //there has got to be an easier way to do this but i'm very behind :(
+      for(let i = 0; i < choices.length; i++){
+        if(choices[i] === response.department){
+          roleObject.department = ids[i];
+        }
+      }
+      db.query(`INSERT INTO role (title, salary, department) VALUES (${roleObject.name}, ${roleObject.salary}, ${roleObject.department})`, function (err, results){
+        if(err){
+          throw err;
+        }
+        console.log(`Added ${roleObject.name} to the database`);
+        askQuestions();
+      });
+    });
+
   });
 }
 
@@ -82,26 +132,53 @@ addRole = async (roleObject) => {
 //  role: 'vocation',
 //  manager: 'Bojack'
 //}
-addEmployee = async (employeeObject) => {
-
+addEmployee = (employeeObject) => {
+  if(employeeObject.manager === 'none'){
+    employeeObject.manager = 'NULL';
+  }
+  db.query(`INSERT INTO employee (first_name, last_name, role_id, manager_id) VALUES ()`, function(err, results){
+    if(err){
+      throw err;
+    }
+  });
 }
 
-//todo update it, empty for now
-function getDepartmentsNames(){
-  db.query('SELECT name FROM department', function (err, results){
+//END OF ADD METHODS
+
+//START OF GETS
+
+
+getDepartmentsNames = () => {
+  db.query(`SELECT name FROM department`, function (err, results){
+    if(err){
+      return err;
+    }
+    console.log(results);
     return results;
   });
 }
 
 function getRolesNames(){
-  db.query('SELECT name FROM role', function (err, results){
+  db.query('SELECT title FROM role', function (err, results){
     return results;
   });
 }
 
 function getEmployeesNames(){
-  return ['none'];
+  db.query('SELECT first_name, last_name FROM employee', function (err, results){
+    return ['none'].push(results);
+  });
 }
+
+//END OF GET METHODS
+
+app.use((req, res) => {
+  res.status(404).end();
+});
+
+const server = app.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
+})
 
 //inquirer options:
 //view all for each table
@@ -131,13 +208,6 @@ function askQuestions() {
     when: (answers) => answers.query === 'Add a Role'
   },
   {
-    type: 'list',
-    message: 'Which department does the role belong to?',
-    name: 'deparment',
-    choices: getDepartmentsNames(),
-    when: (answers) => answers.query === 'Add a Role'
-  },
-  {
     type: 'input',
     message: 'What is the employee\'s first name?',
     name: 'firstName',
@@ -151,51 +221,28 @@ function askQuestions() {
   },
   {
     type: 'list',
-    message: 'What is the employee\'s role?',
-    name: 'role',
-    choices: getRolesNames(),
-    when: (answers) => answers.query === 'Add an Employee'
-  },
-  {
-    type: 'list',
-    message: 'Who is the employee\'s manager?',
-    name: 'manager',
-    choices: getEmployeesNames(),
-    when: (answers) => answers.query === 'Add an Employee'
-  },
-  {
-    type: 'list',
-    //how very proper
-    message: 'For which employee would you like to update their role?',
-    name: 'employee',
-    choices: getEmployeesNames(),
-    when: (answers) => answers.query.includes('Update')
-  },
-  {
-    type: 'list',
     message: 'Which role would you like to assign to this employee?',
     name: 'role',
     when: (answers) => answers.query.includes('Update')
   }
-  ]).then((response) => {
+  ]).then(async (response) => {
     if(response.query !== 'Quit'){
       switch(response.query){
         case 'View Departments':
-          viewDepartments();
+          await viewDepartments();
           break;
         case 'Add a Department':
-          addDepartment(response);
-          console.log(`Added ${response.name} to the database`);
+          await addDepartment(response);
           break;
         case 'View Roles':
-          viewRoles();
+          await viewRoles();
           break;
         case 'Add a Role':
           addRole(response);
           console.log(`Added ${response.name} to the database`);
           break;
         case 'View all Employees':
-          viewEmployees();
+          await viewEmployees();
           break;
         case 'Add an Employee':
           addEmployee(response);
@@ -206,7 +253,16 @@ function askQuestions() {
           console.log(`Updated employee's role`)
           break;
       }
-      askQuestions();
+    }else{
+      server.close();
     }
   });
 }
+
+
+// //tests
+// viewDepartments();
+// viewRoles();
+// viewEmployees();
+
+console.log(getDepartmentsNames());
