@@ -1,23 +1,21 @@
+//All of the setup
 const express = require('express');
 const mysql = require('mysql2');
 const inquirer = require('inquirer');
-const { response } = require('express');
 require('dotenv').config();
 
 const PORT = process.env.PORT;
 const app = express();
 
-// Express middleware
+//Express middleware
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
-// Connect to database
+//Connecting to database using environment variables
 const db = mysql.createConnection(
   {
     host: 'localhost',
-    // MySQL username,
     user: process.env.USER,
-    // MySQL password
     password: process.env.PASS,
     database: process.env.DATABASE
   },
@@ -30,11 +28,12 @@ const db = mysql.createConnection(
 
 //START OF VIEWS
 
-//todo update views
-viewDepartments = async () => {
+//All the views SELECT * from their respective tables and then call for the user what to do next
+
+viewDepartments = () => {
   db.query(`SELECT * FROM department`, function (err, results) {
     if(err){
-      console.log(err);
+      throw err;
     }
     console.table(results);
     
@@ -45,7 +44,7 @@ viewDepartments = async () => {
 viewRoles = () => {
   db.query("SELECT * FROM role", function (err, results) {
     if(err){
-      console.log(err);
+      throw err;
     }
     console.table(results);
     
@@ -56,8 +55,9 @@ viewRoles = () => {
 viewEmployees = () => {
   db.query("SELECT * FROM employee", function (err, results) {
     if(err){
-      console.log(err);
+      throw err;
     }
+
     console.table(results);
     
     askQuestions();
@@ -74,7 +74,7 @@ viewEmployees = () => {
 //  name: 'exapmle'
 //}
 addDepartment = (departmentObject) => {
-  db.query(`INSERT INTO department (name) VALUES (${departmentObject.name})`, function (err, results){
+  db.query(`INSERT INTO department (name) VALUES ('${departmentObject.name}')`, function (err, results){
     if(err){
       throw err;
     }
@@ -111,10 +111,12 @@ addRole = (roleObject) => {
       //there has got to be an easier way to do this but i'm very behind :(
       for(let i = 0; i < choices.length; i++){
         if(choices[i] === response.department){
+          //sql indexs start at 1 rather than 0
           roleObject.department = ids[i];
         }
       }
-      db.query(`INSERT INTO role (title, salary, department) VALUES (${roleObject.name}, ${roleObject.salary}, ${roleObject.department})`, function (err, results){
+
+      db.query(`INSERT INTO role (title, salary, department_id) VALUES ('${roleObject.name}', ${roleObject.salary}, ${roleObject.department})`, function (err, results){
         if(err){
           throw err;
         }
@@ -133,44 +135,171 @@ addRole = (roleObject) => {
 //  manager: 'Bojack'
 //}
 addEmployee = (employeeObject) => {
-  if(employeeObject.manager === 'none'){
-    employeeObject.manager = 'NULL';
-  }
-  db.query(`INSERT INTO employee (first_name, last_name, role_id, manager_id) VALUES ()`, function(err, results){
-    if(err){
-      throw err;
+  let roles =[];
+  let managers =[];
+  let roleIDs = [];
+  let managerIDs = [];
+
+  //I don't like this being as nested as this is but I can't think of anything else
+  db.query(`SELECT id, title FROM role`, function(err, roleResults) {
+    //store the roles
+    for(let result of roleResults){
+      roles.push(result.title);
+      roleIDs.push(result.id)
     }
+
+    //second nest
+    //gets the users desired role
+    inquirer.prompt([
+      {
+        type: 'list',
+        message: 'What is this employee\'s role?',
+        name: 'role',
+        choices: roles
+      }
+    ]).then((roleResponse) => {
+
+      for(let i = 0; i < roles.length; i++){
+        if(roles[i] === roleResponse.role){
+          //sql indexs start at 1 not 0
+          employeeObject.role = i + 1;
+        }
+      }
+
+      //third nest
+      //gets the employees to choose the manager
+      db.query(`SELECT id, first_name AS firstName, last_name AS lastName FROM employee`, function(err, employeeResults){
+
+        for(let result of employeeResults){
+          managers.push(`${result.firstName} ${result.lastName}`);
+          managerIDs.push(result.id);
+        }
+
+        //fourth nest
+        inquirer.prompt([
+          {
+            type: 'list',
+            message: 'Who is this employee\'s manager',
+            name: 'manager',
+            choices: [...managers, 'none']
+          }
+        ]).then((managerResponse) => {
+
+          employeeObject.manager = managerResponse.manager;
+
+          if(employeeObject.manager === 'none'){
+            employeeObject.manager = 'NULL';
+          }else{
+            for(let j = 0; j < managers.length; j++){
+              if(managers[j] === managerResponse.manager){
+                //sql indexs don't start at 0
+                employeeObject.manager = managerIDs[j];
+              }
+            }
+          }
+
+          //fifth nest
+          //queries the database to store our new employees
+          db.query(`INSERT INTO employee (first_name, last_name, role_id, manager_id) VALUES ('${employeeObject.firstName}', '${employeeObject.lastName}', ${employeeObject.role}, ${employeeObject.manager})`, function(err, results){
+            if(err){
+              throw err;
+            }
+            
+            console.log(`Added ${employeeObject.firstName} ${employeeObject.lastName} to the database`);
+
+            askQuestions();
+          });
+          //end of fifth nest
+
+        });
+        //end of fourth nest
+      });
+      //end of third nest
+    });
+    //end of second nest
+
   });
 }
 
 //END OF ADD METHODS
 
-//START OF GETS
+//THE ONE UPDATE METHOD
 
+updateEmployee = () => {
+  let employees = [];
+  let roles = [];
+  db.query(`SELECT first_name AS first, last_name AS last FROM employee`, function(err, employeeResults){
 
-getDepartmentsNames = () => {
-  db.query(`SELECT name FROM department`, function (err, results){
-    if(err){
-      return err;
+    for(let result of employeeResults){
+      employees.push(`${result.first} ${result.last}`);
     }
-    console.log(results);
-    return results;
+
+    //second nest
+    inquirer.prompt([
+      {
+        type: 'list',
+        message: 'Which employee\'s role do you want to update?',
+        name: 'employee',
+        choices: employees
+      }
+    ]).then(employeeResponse => {
+
+      let employeeID = 0;
+      for(let i = 0; i < employees.length; i++){
+        if(employeeResponse.employee === employees[i]){
+          employeeID = i + 1;
+        }
+      }
+
+      //third nest
+      db.query(`SELECT title FROM role`, (err, roleResults) => {
+
+        for(let result of roleResults){
+          roles.push(result.title);
+        }
+
+        //fourth nest
+        inquirer.prompt([
+          {
+            type: 'list',
+            message: 'Which role do you want to assign the selected employee',
+            name: 'role',
+            choices: roles
+          }
+        ]).then(response => {
+
+          let roleID = 0;
+          for(let j = 0; j < roles.length; j++){
+            if(roles[j] === response.role){
+              roleID = j + 1;
+            }
+          }
+
+          //fifth nest
+          db.query(`UPDATE employee SET role_id = ${roleID} WHERE id = ${employeeID}`, (err, results) => {
+            if(err){
+              throw err;
+            }
+
+            console.log(`Updated ${employeeResponse.employee}'s role`);
+
+            askQuestions();
+
+          });
+          //end of fifth nest
+
+        });
+        //end of fourth nest
+
+      });
+      //end of third nest
+
+    });
+    //end of second nest
+
   });
 }
 
-function getRolesNames(){
-  db.query('SELECT title FROM role', function (err, results){
-    return results;
-  });
-}
-
-function getEmployeesNames(){
-  db.query('SELECT first_name, last_name FROM employee', function (err, results){
-    return ['none'].push(results);
-  });
-}
-
-//END OF GET METHODS
 
 app.use((req, res) => {
   res.status(404).end();
@@ -205,28 +334,23 @@ function askQuestions() {
     type: 'input',
     message: 'What is the role\'s salary?',
     name: 'salary',
-    when: (answers) => answers.query === 'Add a Role'
+    when: answers => answers.query === 'Add a Role'
   },
   {
     type: 'input',
     message: 'What is the employee\'s first name?',
     name: 'firstName',
-    when: (answers) => answers.query === 'Add an Employee'
+    when: answers => answers.query === 'Add an Employee'
   },
   {
     type: 'input',
     message: 'What is the employee\'s last name?',
     name: 'lastName',
-    when: (answers) => answers.query === 'Add an Employee'
-  },
-  {
-    type: 'list',
-    message: 'Which role would you like to assign to this employee?',
-    name: 'role',
-    when: (answers) => answers.query.includes('Update')
+    when: answers => answers.query === 'Add an Employee'
   }
   ]).then(async (response) => {
     if(response.query !== 'Quit'){
+
       switch(response.query){
         case 'View Departments':
           await viewDepartments();
@@ -239,30 +363,26 @@ function askQuestions() {
           break;
         case 'Add a Role':
           addRole(response);
-          console.log(`Added ${response.name} to the database`);
           break;
         case 'View all Employees':
           await viewEmployees();
           break;
         case 'Add an Employee':
           addEmployee(response);
-          console.log(`Added ${response.firstName} ${response.lastName} to the database`);
           break;
-        case 'Update an Employee':
-          updateEmployee(response);
-          console.log(`Updated employee's role`)
+        case 'Update an Employee\'s Role':
+          updateEmployee();
           break;
       }
+
     }else{
+
+      server.closeAllConnections();
       server.close();
+      
     }
   });
 }
 
-
-// //tests
-// viewDepartments();
-// viewRoles();
-// viewEmployees();
-
-console.log(getDepartmentsNames());
+//initialization
+askQuestions();
