@@ -42,7 +42,7 @@ viewDepartments = () => {
 }
 
 viewRoles = () => {
-  db.query("SELECT * FROM role", function (err, results) {
+  db.query("SELECT role.id, role.title, department.name AS department, role.salary FROM role INNER JOIN department ON department.id=role.department_id", function (err, results) {
     if(err){
       throw err;
     }
@@ -53,7 +53,7 @@ viewRoles = () => {
 }
 
 viewEmployees = () => {
-  db.query("SELECT * FROM employee", function (err, results) {
+  db.query("SELECT employee.id, employee.first_name, employee.last_name, role.title, department.name AS department, role.salary, CONCAT(m.first_name,' ', m.last_name) AS manager FROM employee LEFT JOIN role ON employee.role_id = role.id LEFT JOIN department ON role.department_id = department.id LEFT JOIN employee m ON employee.manager_id = m.id", function (err, results) {
     if(err){
       throw err;
     }
@@ -111,7 +111,6 @@ addRole = (roleObject) => {
       //there has got to be an easier way to do this but i'm very behind :(
       for(let i = 0; i < choices.length; i++){
         if(choices[i] === response.department){
-          //sql indexs start at 1 rather than 0
           roleObject.department = ids[i];
         }
       }
@@ -161,8 +160,7 @@ addEmployee = (employeeObject) => {
 
       for(let i = 0; i < roles.length; i++){
         if(roles[i] === roleResponse.role){
-          //sql indexs start at 1 not 0
-          employeeObject.role = i + 1;
+          employeeObject.role = roleIDs[i];
         }
       }
 
@@ -192,7 +190,6 @@ addEmployee = (employeeObject) => {
           }else{
             for(let j = 0; j < managers.length; j++){
               if(managers[j] === managerResponse.manager){
-                //sql indexs don't start at 0
                 employeeObject.manager = managerIDs[j];
               }
             }
@@ -228,6 +225,7 @@ addEmployee = (employeeObject) => {
 updateEmployee = () => {
   let employees = [];
   let roles = [];
+  let roleIDs = [];
   db.query(`SELECT first_name AS first, last_name AS last FROM employee`, function(err, employeeResults){
 
     for(let result of employeeResults){
@@ -252,10 +250,11 @@ updateEmployee = () => {
       }
 
       //third nest
-      db.query(`SELECT title FROM role`, (err, roleResults) => {
+      db.query(`SELECT id, title FROM role`, (err, roleResults) => {
 
         for(let result of roleResults){
           roles.push(result.title);
+          roleIDs.push(result.id);
         }
 
         //fourth nest
@@ -271,7 +270,7 @@ updateEmployee = () => {
           let roleID = 0;
           for(let j = 0; j < roles.length; j++){
             if(roles[j] === response.role){
-              roleID = j + 1;
+              roleID = roleIDs[j];
             }
           }
 
