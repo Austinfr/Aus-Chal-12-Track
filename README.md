@@ -29,6 +29,7 @@ After you have downloaded everything you can go ahead and log into your mysql se
 
 This is a link to a video demostration of how this project can be utilized:
 
+[Video link](https://youtu.be/k6l2d-yDVTY)
 
 
 ## Testing
